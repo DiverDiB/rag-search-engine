@@ -4,8 +4,11 @@ import argparse
 import json
 import string
 import sys
+from nltk.stem import PorterStemmer
 
 PUNC_TABLE = str.maketrans("", "", string.punctuation)
+
+stemmer = PorterStemmer()
 
 def get_movies(path="data/movies.json"):
     try:
@@ -30,11 +33,12 @@ def tokenize(text, stopwords=None):
     
     # 2. Filter out stop words if provided
     if stopwords:
-        return [w for w in words if w not in stopwords]
-    return words
+        return [stemmer.stem(w) for w in words if w not in stopwords]
+   
+    return [stemmer.stem(w) for w in words]
 
 def search_movies(query):
-    movies = get_movies();
+    movies = get_movies()
     stop_words = get_stopwords()
 
     query_tokens = tokenize(query, stop_words)
