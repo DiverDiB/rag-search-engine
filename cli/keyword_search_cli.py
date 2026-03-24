@@ -4,7 +4,59 @@ import argparse
 import json
 import string
 import sys
+import os
+import pickle
 from nltk.stem import PorterStemmer
+
+class InvertedIndex:
+    def __init__(self, index=None, docmap=None):
+        self.index= index if index is not None else {}
+        self.docmap = docmap if docmap is not None else {}
+
+    def __add_document(self, doc_id, text):
+        tokens = tokenize(text)
+        for token in tokens:
+            if token not in self.index:
+                self.index[token] = set()
+            self.index[token].add(doc_id)
+
+    def get_documents(self, term):
+        term = term.lower()
+
+        ids_set = self.index.get(term, set())
+        return sorted(list(ids_set))
+
+    def build(self, movies):
+        for movie in movies:
+            # 1. Get the ID (assuming the key is 'id')
+            doc_id = movie["id"]
+            
+            # 2. Add the full movie object to the docmap
+            self.docmap[doc_id] = movie
+            
+            # 3. Concatenate title and description
+            # Using an f-string as suggested in the prompt
+            full_text = f"{movie['title']} {movie['description']}"
+            
+            # 4. Use your helper to index the words
+            self.__add_document(doc_id, full_text)
+
+    def save(self):
+        # 1. Create the 'cache' directory if it doesn't exist
+        if not os.path.exists("cache"):
+            os.makedirs("cache")
+
+        # 2. Save the index to cache/index.pkl
+        with open("cache/index.pkl", "wb") as f:
+            pickle.dump(self.index, f)
+
+        # 3. Save the docmap to cache/docmap.pkl
+        with open("cache/docmap.pkl", "wb") as f:
+            pickle.dump(self.docmap, f)
+
+    def load(self):
+        
+
 
 PUNC_TABLE = str.maketrans("", "", string.punctuation)
 
@@ -60,12 +112,24 @@ def main() -> None:
     search_parser = subparsers.add_parser("search", help="Search movies using BM25")
     search_parser.add_argument("query", type=str, help="Search query")
 
+    subparsers.add_parser("build", help="Build the inverted index")
+
     args = parser.parse_args()
     translation_table = str.maketrans("", "", string.punctuation)
 
     match args.command:
         case "search":
             search_movies(args.query)
+        case "build":
+            # Load the raw data from the JSON file
+            movies_data = get_movies()
+            # Access the list of movie dictionaries
+            movie_list = movies_data.get("movies", [])
+            # Instantiate with empty dicts for index and docmap
+            idx = InvertedIndex()
+            # Build and save
+            idx.build(movie_list)
+            idx.save()
         case _:
             parser.print_help()
 
