@@ -2,16 +2,19 @@
 
 import argparse
 import json
+import math
 import string
 import sys
 import os
 import pickle
 from nltk.stem import PorterStemmer
+from collections import Counter
 
 class InvertedIndex:
-    def __init__(self, index=None, docmap=None):
+    def __init__(self, index=None, docmap=None, term_frequencies=None):
         self.index= index if index is not None else {}
         self.docmap = docmap if docmap is not None else {}
+        self.term_frequencies = term_frequencies if term_frequencies is not None else {}
 
     def __add_document(self, doc_id, text):
         tokens = tokenize(text)
@@ -19,6 +22,8 @@ class InvertedIndex:
             if token not in self.index:
                 self.index[token] = set()
             self.index[token].add(doc_id)
+
+        self.term_frequencies[doc_id] = Counter(tokens)
 
     def get_documents(self, term):
         term = term.lower()
@@ -54,9 +59,41 @@ class InvertedIndex:
         with open("cache/docmap.pkl", "wb") as f:
             pickle.dump(self.docmap, f)
 
-    def load(self):
-        
+        # Save term_frequencies to cache/term_frequencies.pkl
+        with open("cache/term_frequencies.pkl", "wb") as f:
+            pickle.dump(self.term_frequencies, f)
 
+    def load(self):
+        # Check if both required files exist in the cache
+        if not os.path.exists("cache/index.pkl") or not os.path.exists("cache/docmap.pkl") or not os.path.exists("cache/term_frequencies.pkl"):
+            raise FileNotFoundError("Index, Docmap, or Term Frequency file not found in cache")
+
+        # Load the inverted index dictionary
+        with open("cache/index.pkl", "rb") as f:
+            self.index = pickle.load(f)
+
+        # Load the document mapping dictionary
+        with open("cache/docmap.pkl", "rb") as f:
+            self.docmap = pickle.load(f)
+
+        # Load the term_frequency dictionary
+        with open("cache/term_frequencies.pkl", "rb") as f:
+            self.term_frequencies = pickle.load(f)
+
+    def get_tf(self, doc_id, term):
+        # Tokenize the term
+        tokens = tokenize(term)
+        if len(tokens) != 1:
+            raise ValueError("Please provide a single term for term frequency calculation.")
+        
+        token = tokens[0]
+        doc_counts = self.term_frequencies.get(doc_id, {})
+        return doc_counts.get(token, 0)
+    
+    def get_bm25_idf(self, term: str) -> float:
+        total_docs = len(self.docmap)
+        doc_freq = len(self.get_documents(term))
+        return math.log((total_docs - doc_freq + 0.5) / (doc_freq + 0.5) + 1)
 
 PUNC_TABLE = str.maketrans("", "", string.punctuation)
 
@@ -90,20 +127,113 @@ def tokenize(text, stopwords=None):
     return [stemmer.stem(w) for w in words]
 
 def search_movies(query):
-    movies = get_movies()
+    # Initialize and load the index
+    idx = InvertedIndex()
+    try: 
+        idx.load()
+    except FileNotFoundError:
+        print("Index not found.  Please run the 'build' command first.")
+        sys.exit(1)
+
+    # Tokenize the user's query
+    #movies = get_movies()
     stop_words = get_stopwords()
 
     query_tokens = tokenize(query, stop_words)
-    results = []
+    results_ids = []
 
-    for movie in movies.get("movies", []):
-        title_tokens = tokenize(movie["title"], stop_words)
-        if any(q_t in t_t for q_t in query_tokens for t_t in title_tokens):
-            results.append(movie)
+    for token in query_tokens:
+        ids = idx.get_documents(token)
+        for doc_id in ids:
+            if doc_id not in results_ids:
+                results_ids.append(doc_id)
+
+            # Stop once we have 5 unique results
+            if len(results_ids) >= 5:
+                break
+        if len(results_ids) >= 5:
+            break
 
     # Print top 5 results
-    for i, movie in enumerate(results[:5], 1):
-        print(f"{i}. {movie["title"]}")
+    for doc_id in results_ids:
+        movie = idx.docmap.get(doc_id)
+        if movie:
+            print(f"{movie['title']} ({doc_id})")
+
+def term_freq(doc_id, term):
+    # Initialize and load the index
+    idx = InvertedIndex()
+    try: 
+        idx.load()
+    except FileNotFoundError:
+        print("Index not found.  Please run the 'build' command first.")
+        sys.exit(1)
+
+    tf = idx.get_tf(int(doc_id), term)
+    print(tf)
+
+def idf(term):
+    # Initialize and load the index
+    idx = InvertedIndex()
+    try: 
+        idx.load()
+    except FileNotFoundError:
+        print("Index not found.  Please run the 'build' command first.")
+        sys.exit(1)
+
+    # Tokenize / Stem the term
+    tokens = tokenize(term)
+    search_term = tokens[0] if tokens else term
+
+    # Get total number of documents
+    total_docs = len(idx.docmap)
+
+    # Get number of documents containing the term
+    doc_freq = len(idx.get_documents(search_term))
+
+    idf_value = math.log((total_docs + 1) / (doc_freq + 1)) 
+    # Adding 1 to avoid division by zero
+    print(f"Inverse document frequency of '{term}': {idf_value:.2f}")
+
+def tfidf(doc_id, term):
+    # Initialize and load the index
+    idx = InvertedIndex()
+    try: 
+        idx.load()
+    except FileNotFoundError:
+        print("Index not found.  Please run the 'build' command first.")
+        sys.exit(1)
+
+    # Tokenize / Stem the term
+    tokens = tokenize(term)
+    search_term = tokens[0] if tokens else term
+
+    # Get TF
+    tf = idx.get_tf(int(doc_id), search_term)
+
+    # Get IDF
+    total_docs = len(idx.docmap)
+    doc_freq = len(idx.get_documents(search_term))
+    idf_value = math.log((total_docs + 1) / (doc_freq + 1)) 
+
+    tfidf_score = tf * idf_value
+    print(f"TF-IDF score for term '{term}' in document '{doc_id}': {tfidf_score:.2f}")    
+
+def bm25_idf(term):
+    # Initialize and load the index
+    idx = InvertedIndex()
+    try: 
+        idx.load()
+    except FileNotFoundError:
+        print("Index not found.  Please run the 'build' command first.")
+        sys.exit(1)
+
+    # Tokenize / Stem the term
+    tokens = tokenize(term)
+    search_term = tokens[0] if tokens else term
+
+    bm25_idf_value = idx.get_bm25_idf(search_term)
+    print(f"BM25 IDF score for term '{term}': {bm25_idf_value:.2f}")
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Keyword Search CLI")
@@ -113,6 +243,20 @@ def main() -> None:
     search_parser.add_argument("query", type=str, help="Search query")
 
     subparsers.add_parser("build", help="Build the inverted index")
+
+    tf_parser = subparsers.add_parser("tf", help="Get term frequency for a term in a document")
+    tf_parser.add_argument("doc_id", type=str, help="document ID")
+    tf_parser.add_argument("term", type=str, help="term to check frequency for")
+
+    idf_parser = subparsers.add_parser("idf", help="Get inverse document frequency for a term")
+    idf_parser.add_argument("term", type=str, help="term to check IDF for")
+
+    tfidf_parser = subparsers.add_parser("tfidf", help="Get TF-IDF score for a term in a document")
+    tfidf_parser.add_argument("doc_id", type=str, help="document ID")
+    tfidf_parser.add_argument("term", type=str, help="term to check TF-IDF score for")
+
+    bm25idf_parser = subparsers.add_parser("bm25idf", help="Get BM25 IDF score for a term")
+    bm25idf_parser.add_argument("term", type=str, help="term to check BM25 IDF score for")
 
     args = parser.parse_args()
     translation_table = str.maketrans("", "", string.punctuation)
@@ -130,6 +274,14 @@ def main() -> None:
             # Build and save
             idx.build(movie_list)
             idx.save()
+        case "tf":
+            term_freq(args.doc_id, args.term)
+        case "idf":
+            idf(args.term)
+        case "tfidf":
+            tfidf(args.doc_id, args.term)
+        case "bm25idf":
+            bm25_idf(args.term)
         case _:
             parser.print_help()
 
