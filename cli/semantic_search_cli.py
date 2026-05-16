@@ -2,7 +2,7 @@
 
 import argparse
 
-from lib.semantic_search import verify_embeddings, verify_model, embed_text, verify_embeddings
+from lib.semantic_search import embed_query_text, search_preprocess, verify_embeddings, verify_model, embed_text, verify_embeddings, chunk
 
 def main():
     parser = argparse.ArgumentParser(description="Semantic Search CLI")
@@ -15,6 +15,18 @@ def main():
 
     verify_embed_parser = subparsers.add_parser("verify_embeddings", help="Verify embedding generation and caching")
 
+    query_embed_parser = subparsers.add_parser("embed_query", help="Embed a query text string")
+    query_embed_parser.add_argument("query", help="The query text to embed")
+
+    search_parser = subparsers.add_parser("search", help="Search for similar documents")
+    search_parser.add_argument("query", help="The query text to search for")
+    search_parser.add_argument("--limit", type=int, default=5, help="Number of results to return")
+
+    chunk_parser = subparsers.add_parser("chunk", help="Test text chunking")
+    chunk_parser.add_argument("text", help="The text to chunk")
+    chunk_parser.add_argument("--chunk-size", type=int, default=200, help="The size of each chunk")
+    chunk_parser.add_argument("--overlap", type=int, default=40, help="The number of overlapping words between chunks")
+
     args = parser.parse_args()
 
     match args.command:
@@ -24,6 +36,12 @@ def main():
             embed_text(args.text)
         case "verify_embeddings":
             verify_embeddings()
+        case "embed_query":
+            embed_query_text(args.query)
+        case "search":
+            search_preprocess(args.query, args.limit)
+        case "chunk":
+            chunk(args.text, args.chunk_size, args.overlap)
         case _:
             parser.print_help()
 
