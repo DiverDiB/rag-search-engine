@@ -2,7 +2,7 @@
 
 import argparse
 
-from lib.semantic_search import embed_query_text, search_preprocess, verify_embeddings, verify_model, embed_text, verify_embeddings, chunk
+from lib.semantic_search import embed_query_text, search_preprocess, verify_embeddings, verify_model, embed_text, verify_embeddings, chunk, semantic_chunk, embed_chunks
 
 def main():
     parser = argparse.ArgumentParser(description="Semantic Search CLI")
@@ -24,8 +24,15 @@ def main():
 
     chunk_parser = subparsers.add_parser("chunk", help="Test text chunking")
     chunk_parser.add_argument("text", help="The text to chunk")
-    chunk_parser.add_argument("--chunk-size", type=int, default=200, help="The size of each chunk")
-    chunk_parser.add_argument("--overlap", type=int, default=40, help="The number of overlapping words between chunks")
+    chunk_parser.add_argument("--chunk-size", type=int, default=4, help="The size of each chunk")
+    chunk_parser.add_argument("--overlap", type=int, default=0, help="The number of overlapping words between chunks")
+
+    semantic_chunk_parser = subparsers.add_parser("semantic_chunk", help="Test semantic text chunking")
+    semantic_chunk_parser.add_argument("text", help="The text to chunk")
+    semantic_chunk_parser.add_argument("--max-chunk-size", type=int, default=4, help="The maximum size of each chunk")
+    semantic_chunk_parser.add_argument("--overlap", type=int, default=0, help="The number of overlapping words between chunks")
+
+    embed_chunks_parser = subparsers.add_parser("embed_chunks", help="Test embedding generation for text chunks")
 
     args = parser.parse_args()
 
@@ -42,6 +49,10 @@ def main():
             search_preprocess(args.query, args.limit)
         case "chunk":
             chunk(args.text, args.chunk_size, args.overlap)
+        case "semantic_chunk":
+            semantic_chunk(args.text, args.max_chunk_size, args.overlap)
+        case "embed_chunks":
+            embed_chunks()
         case _:
             parser.print_help()
 
